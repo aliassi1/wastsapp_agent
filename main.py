@@ -44,15 +44,14 @@ def child_agent(state): return {"output": "Handled by child_agent"}
 graph.add_node("book_checkup_agent", EligibilityandPatientProfile)
 graph.add_node('prebooking_validation',EligibilityandPatientProfile_preBooking)
 
-graph.add_node('next_step',child_agent)
 
+graph.add_node('booking_calender', open_booking_link)
+graph.add_node('next_step', child_agent)
 
-graph.add_node("tooth_pain_agent", tooth_pain_agent)
+graph.add_node("faq_agent", tooth_pain_agent)
 graph.add_node("whitening_agent", whitening_agent)
-graph.add_node("braces_agent", braces_agent)
-graph.add_node("emergency_agent", emergency_agent)
-graph.add_node("child_agent", child_agent)
-graph.add_node('booking_calender',open_booking_link)
+graph.add_node("reschedule_agent", braces_agent)
+graph.add_node("cancel_agent", child_agent)
 
 
     
@@ -104,9 +103,13 @@ graph.add_edge('booking_calender',END)
 
 app = graph.compile()
 
+import uuid
+
+import asyncio
+
 if __name__ == "__main__":
-    
-    # Example inputs
-    query=input()
-    print(app.invoke({"input": query}))  
-    # print(app.invoke({"input": "I want to check my teeth when possible give me a certain time"}))
+    # Generate a random session_id for each chat
+    session_id = str(uuid.uuid4())
+    print(f"Session ID: {session_id}")
+    query = input()
+    result = asyncio.run(app.ainvoke({"input": query, "session_id": session_id}))

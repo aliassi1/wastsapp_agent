@@ -3,7 +3,10 @@ from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.chains import LLMChain
-from tools.Utils.utils import model, memory
+from tools.Utils.utils import model
+from langchain_community.chat_message_histories import RedisChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+import os
 
 questions = [
     "Do you have a preferred dentist, or would you like the first available?",
@@ -53,24 +56,54 @@ Questions to use (in order when needed):
 ])
 
 
-chain = LLMChain(llm=model, prompt=prompt, memory=memory)
 
-def PreBooking_validation(user_msg: str) -> PreBookingInfo:
-    out = chain.invoke({
+# Redis setup for session-based memory
+REDIS_URL = "redis://:supersecret123@localhost:6379/0"
+
+def get_session_history(session_id: str):
+    return RedisChatMessageHistory(
+        url=REDIS_URL,
+        session_id=session_id,
+        ttl=7*24*3600
+    )
+
+chain = prompt | model
+
+# Wrap chain with Redis-backed message history
+router_chain = RunnableWithMessageHistory(
+    chain,
+    get_session_history,
+    input_messages_key="input",
+    history_messages_key="history",
+)
+
+
+import asyncio
+
+async def PreBooking_validation(session_id: str, user_msg: str) -> PreBookingInfo:
+    out = await router_chain.ainvoke({
         "input": user_msg,
         "format_instructions": parser.get_format_instructions(),
         "questions": questions
-    })
-    parsed = parser.parse(out["text"])
+    }, config={"configurable": {"session_id": session_id}})
+    # Extract content if output is an AIMessage or dict with 'content'
+    content = None
+    if hasattr(out, 'content'):
+        content = out.content
+    elif isinstance(out, dict) and 'content' in out:
+        content = out['content']
+    else:
+        content = out
+    parsed = parser.parse(content)
     print(parsed)
     return parsed
 
+
 if __name__ == "__main__":
-    while True:
-        q = input("You: ")
-        out = chain.invoke({
-            "input": q,
-            "format_instructions": parser.get_format_instructions(),
-            "questions": questions
-        })
-        print(parser.parse(out["text"]))
+    async def main():
+        session_id = input("Enter session id: ")
+        while True:
+            q = input("You: ")
+            result = await PreBooking_validation(session_id, q)
+            print(result)
+    asyncio.run(main())

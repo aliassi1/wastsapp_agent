@@ -9,14 +9,11 @@ load_dotenv()
 api_key_value = os.getenv('OPEN_AI_KEY')
 
 model = ChatOpenAI(api_key=api_key_value, model="gpt-4o-mini")
-
 ALLOWED_INTENTS = {
-    "book_checkup": "book_checkup_agent",
-    "tooth_pain_appointment": "tooth_pain_agent",
-    "cosmetic_whitening": "whitening_agent",
-    "braces_consultation": "braces_agent",
-    "emergency_visit": "emergency_agent",
-    "child_appointment": "child_agent",
+    "faq": "faq_agent",
+    "book_*": "book_checkup_agent",
+    "reschedule": "reschedule_agent",
+    "cancel": "cancel_agent",
 }
 
 memory = ConversationSummaryBufferMemory(

@@ -5,51 +5,56 @@ from tools.book_checkup.preBooking_validation import PreBooking_validation
 from langchain_core.messages import AIMessage
 
 
-def router(state: dict):
+import asyncio
+async def router(state: dict):
     """
     Router node: look at conversation output, decide intent.
     If not sure, return {"route": "router"} to loop again.
     """
-    print('this is it', state)
-    result = conversational_agent(state["input"])  # your LLM call
-    intent = result.get("response")  # must return one of the ALLOWED_INTENTS or None
-    
+    session_id = state.get("session_id")
+    result = await conversational_agent(session_id, state["input"])  # your LLM call
+    intent = result.get("response") if isinstance(result, dict) else result  # must return one of the ALLOWED_INTENTS or None
+    print(intent)
     if intent in ALLOWED_INTENTS:
-        # Route to confirm_intent with the detected intent
-        return {"route": intent, 
-                "intent": intent, 
-                "input": state["input"],
-                "messages": [AIMessage(content=intent)]}
+        return {
+            "route": intent,
+            "intent": intent,
+            "input": state["input"],
+            "session_id": session_id,
+            "messages": [AIMessage(content=intent)],
+            'output':intent
+        }
     else:
-        # not confident, ask for more input
-        return {"route": "wait_for_input", 
-                "input": state["input"]
-                ,"messages": [AIMessage(content=intent)]
-}
+        return {
+            "route": "wait_for_input",
+            "input": state["input"],
+            "session_id": session_id,
+            "messages": [AIMessage(content=intent)]
+        }
 
 
 
 
-# Node to wait for new user input
-def wait_for_input(state: dict):
+async def wait_for_input(state: dict):
     # In a real app, you would collect new input from the user here.
     # For demo, just print and return the same state.
     print("Waiting for new user input. Please provide new input:")
-    new_input = input()
-    return {"input": new_input, "route": "router"}
+    session_id = state.get("session_id")
+    new_input = await asyncio.to_thread(input)
+    return {"input": new_input, "route": "router", "session_id": session_id}
 
 
 
 
-# Node to confirm detected intent
-def confirm_intent(state: dict):
+async def confirm_intent(state: dict):
     intent = state["intent"]
     print(f"Detected intent: {intent}. Is this what you want? (yes/no)")
-    answer = input().strip().lower()
+    answer = await asyncio.to_thread(input).strip().lower()
+    session_id = state.get("session_id")
     if answer == "yes":
-        return {"route": intent, "input":state["input"]}
+        return {"route": intent, "input":state["input"], "session_id": session_id}
     else:
-        return {"route": "wait_for_input", "input": state["input"]}
+        return {"route": "wait_for_input", "input": state["input"], "session_id": session_id}
 
 
 
@@ -68,7 +73,7 @@ def is_form_complete(intake_form) -> bool:
     Returns True if all required fields in intake_form are not None.
     intake_form can be a dict or a Pydantic model with attributes.
     """
-    required_fields = ["new_patient", "age", "special_needs",'full_name']
+    required_fields = ["new_patient"]
 
     for field in required_fields:
         value = getattr(intake_form, field, None) if hasattr(intake_form, field) else intake_form.get(field, None)
@@ -78,13 +83,13 @@ def is_form_complete(intake_form) -> bool:
     return False
 
 
-# Node to confirm detected intent
-def PaitentProfile_missing(state: dict):
+async def PaitentProfile_missing(state: dict):
     # In a real app, you would collect new input from the user here.
     # For demo, just print and return the same state.
     print("Now in PaitentProfilemissing")
-    new_input = input()
-    return {"input": new_input, "route": "book_checkup_agent"}
+    session_id = state.get("session_id")
+    new_input = await asyncio.to_thread(input)
+    return {"input": new_input, "route": "book_checkup_agent", "session_id": session_id}
 
 
 
@@ -92,21 +97,14 @@ def PaitentProfile_missing(state: dict):
 
 
 
-def EligibilityandPatientProfile(state: dict):
-    """
-    Router node: look at conversation output, decide intent.
-    If not sure, return {"route": "router"} to loop again.
-    """
-
-    result = get_checkingin_first_step_BOOK_CHECKUP(state["input"])  # your LLM call
-    loop=is_form_complete(result)
-
+async def EligibilityandPatientProfile(state: dict):
+    session_id = state.get("session_id")
+    result = await get_checkingin_first_step_BOOK_CHECKUP(session_id, state["input"])
+    loop = is_form_complete(result)
     if not loop:
-        # Route to confirm_intent with the detected intent
-        return {"route": "prebooking_validation", "input": state["input"]}
+        return {"route": "prebooking_validation", "input": state["input"], "session_id": session_id}
     else:
-        # not confident, ask for more input
-        return {"route": "PaitentProfile_missing", "input": state["input"]}
+        return {"route": "PaitentProfile_missing", "input": state["input"], "session_id": session_id}
 
 
 
@@ -141,13 +139,13 @@ def is_form_complete_PreBooking(intake_form) -> bool:
 
 
 
-# Node to confirm detected intent
-def PaitentProfile_missing_preBooking(state: dict):
+async def PaitentProfile_missing_preBooking(state: dict):
     # In a real app, you would collect new input from the user here.
     # For demo, just print and return the same state.
     print("Now in PaitentProfile_missing_preBooking")
-    new_input = input()
-    return {"input": new_input, "route": "prebooking_validation"}
+    session_id = state.get("session_id")
+    new_input = await asyncio.to_thread(input)
+    return {"input": new_input, "route": "prebooking_validation", "session_id": session_id}
 
 
 
@@ -155,21 +153,14 @@ def PaitentProfile_missing_preBooking(state: dict):
 
 
 
-def EligibilityandPatientProfile_preBooking(state: dict):
-    """
-    Router node: look at conversation output, decide intent.
-    If not sure, return {"route": "router"} to loop again.
-    """
-
-    result = PreBooking_validation(state["input"])  # your LLM call
-    loop=is_form_complete_PreBooking(result)
-
+async def EligibilityandPatientProfile_preBooking(state: dict):
+    session_id = state.get("session_id")
+    result = await PreBooking_validation(session_id, state["input"])
+    loop = is_form_complete_PreBooking(result)
     if not loop:
-        # Route to confirm_intent with the detected intent
-        return {"route": "booking_calender", "input": state["input"]}
+        return {"route": "booking_calender", "input": state["input"], "session_id": session_id}
     else:
-        # not confident, ask for more input
-        return {"route": "PaitentProfile_missing_preBooking", "input": state["input"]}
+        return {"route": "PaitentProfile_missing_preBooking", "input": state["input"], "session_id": session_id}
 
 
 
